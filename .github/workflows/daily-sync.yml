@@ -2,8 +2,8 @@ name: Daily wenews sync
 
 on:
   schedule:
-    # 22:30 UTC = 06:30 北京时间，财新「金融我闻」每日更新后抓取
-    - cron: "30 22 * * *"
+    # 13:30 UTC = 21:30 北京时间，每晚拓展当日更新
+    - cron: "30 13 * * *"
   workflow_dispatch: {}   # 允许手动触发
 
 permissions:
