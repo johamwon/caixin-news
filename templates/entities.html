@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}实体库 · 金融我闻{% endblock %}
+
+{% set type_names = {'person': '人物', 'org': '机构', 'event': '事件'} %}
+{% set type_icons = {'person': '👤', 'org': '🏢', 'event': '⚡'} %}
+
+{% block content %}
+<div class="entities-page">
+  <div class="entities-head">
+    <h1>实体库</h1>
+    <p class="entities-desc">从 2000+ 篇报道中识别出的人物、机构与事件，点击查看其全部相关报道与关系网络</p>
+  </div>
+
+  <div class="entities-toolbar">
+    <div class="type-tabs">
+      {% for t in ['person', 'org', 'event'] %}
+      <a class="type-tab {{ t }} {{ 'active' if etype == t else '' }}"
+         href="{{ url_for('entities_browse', type=t, q=q or None) }}">
+        {{ type_icons[t] }} {{ type_names[t] }}
+        <em>{{ type_counts.get(t, 0) }}</em>
+      </a>
+      {% endfor %}
+    </div>
+    <form class="entity-search" method="get" action="{{ url_for('entities_browse') }}">
+      <input type="hidden" name="type" value="{{ etype }}">
+      <input type="search" name="q" value="{{ q or '' }}" placeholder="搜索{{ type_names[etype] }}名称…">
+      <button type="submit">搜索</button>
+    </form>
+  </div>
+
+  {% if rows %}
+  <div class="entity-grid">
+    {% for e in rows %}
+    <a class="entity-card {{ e.type }}" href="{{ url_for('entity_detail', entity_id=e.id) }}">
+      <div class="card-name">{{ e.name }}</div>
+      <div class="card-meta">
+        <span class="card-count">{{ e.article_count }} 篇报道</span>
+        {% if e.latest %}<span class="card-latest">最新 {{ e.latest[:10] }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-note">未找到匹配的{{ type_names[etype] }}。</p>
+  {% endif %}
+</div>
+
+<style>
+.entities-page { padding: 24px 0; }
+.entities-head h1 { margin: 0 0 6px; font-size: 26px; }
+.entities-desc { color: #6b7280; font-size: 14px; margin: 0 0 20px; }
+
+.entities-toolbar {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.type-tabs { display: flex; gap: 10px; }
+.type-tab {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px; border-radius: 999px; text-decoration: none;
+  background: #fff; color: #374151; font-size: 14px;
+  border: 1px solid #e6e8eb;
+}
+.type-tab em { font-style: normal; color: #9ca3af; font-size: 12px; }
+.type-tab.active.person { background: #e74c3c; border-color: #e74c3c; color: #fff; }
+.type-tab.active.org { background: #3498db; border-color: #3498db; color: #fff; }
+.type-tab.active.event { background: #2ecc71; border-color: #2ecc71; color: #fff; }
+.type-tab.active em { color: rgba(255,255,255,.85); }
+
+.entity-search { display: flex; gap: 8px; }
+.entity-search input[type=search] {
+  padding: 8px 14px; border: 1px solid #e6e8eb; border-radius: 999px;
+  font-size: 14px; outline: none; width: 220px;
+}
+.entity-search input[type=search]:focus { border-color: #c0182b; }
+.entity-search button {
+  padding: 8px 18px; border: 0; border-radius: 999px;
+  background: #c0182b; color: #fff; font-size: 14px; cursor: pointer;
+}
+
+.entity-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.entity-card {
+  background: #fff; border-radius: 12px; padding: 16px 18px;
+  text-decoration: none; color: #1a1a1a;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  border-top: 3px solid #e74c3c;
+  transition: transform .15s, box-shadow .15s;
+}
+.entity-card.org { border-top-color: #3498db; }
+.entity-card.event { border-top-color: #2ecc71; }
+.entity-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0,0,0,.1);
+}
+.card-name {
+  font-size: 16px; font-weight: 600; margin-bottom: 8px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.card-meta { display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af; }
+.card-count { color: #6b7280; }
+
+.empty-note { color: #9ca3af; padding: 40px 0; text-align: center; }
+
+@media (max-width: 700px) {
+  .entities-toolbar { flex-direction: column; align-items: stretch; }
+  .entity-search input[type=search] { flex: 1; width: auto; }
+}
+</style>
+{% endblock %}

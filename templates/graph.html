@@ -1,0 +1,504 @@
+{% extends "base.html" %}
+{% block title %}知识图谱 · 金融我闻{% endblock %}
+
+{% block content %}
+<div class="graph-container">
+  <div class="graph-sidebar">
+    <h2>知识图谱</h2>
+    <p class="graph-desc">点击节点查看该实体的相关报道；双击节点以它为中心展开关系网络</p>
+
+    <div class="graph-stats">
+      <a class="stat-card" href="{{ url_for('entities_browse', type='person') }}">
+        <div class="stat-value">{{ type_counts.get('person', 0) }}</div>
+        <div class="stat-label">人物</div>
+      </a>
+      <a class="stat-card" href="{{ url_for('entities_browse', type='org') }}">
+        <div class="stat-value">{{ type_counts.get('org', 0) }}</div>
+        <div class="stat-label">机构</div>
+      </a>
+      <a class="stat-card" href="{{ url_for('entities_browse', type='event') }}">
+        <div class="stat-value">{{ type_counts.get('event', 0) }}</div>
+        <div class="stat-label">事件</div>
+      </a>
+    </div>
+
+    <div class="graph-filters">
+      <div class="filter-group">
+        <label class="filter-label">
+          <input type="checkbox" class="type-filter" value="person" checked>
+          <span class="filter-chip person">人物</span>
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="type-filter" value="org" checked>
+          <span class="filter-chip org">机构</span>
+        </label>
+        <label class="filter-label">
+          <input type="checkbox" class="type-filter" value="event" checked>
+          <span class="filter-chip event">事件</span>
+        </label>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="entitySearch" placeholder="搜索实体名称…">
+      </div>
+
+      <div class="limit-control">
+        <label>显示节点数：</label>
+        <select id="nodeLimit">
+          <option value="30">30</option>
+          <option value="60" selected>60</option>
+          <option value="100">100</option>
+          <option value="200">200</option>
+        </select>
+      </div>
+
+      <button class="btn-primary" onclick="clearFocus()">🌐 全局视图</button>
+    </div>
+
+    <div class="legend">
+      <h3>图例</h3>
+      <div class="legend-item"><span class="legend-dot person"></span>人物</div>
+      <div class="legend-item"><span class="legend-dot org"></span>机构</div>
+      <div class="legend-item"><span class="legend-dot event"></span>事件</div>
+      <div class="legend-item"><span class="legend-line"></span>线条粗细 = 共现次数</div>
+    </div>
+  </div>
+
+  <div class="graph-main">
+    <div id="focusBar" class="focus-bar" style="display:none">
+      <span>🎯 当前中心：<strong id="focusName"></strong></span>
+      <a id="focusDetail" href="#">查看档案 →</a>
+      <button onclick="clearFocus()">✕ 退出聚焦</button>
+    </div>
+    <div id="graphNetwork" class="graph-network"></div>
+    <div class="graph-info">
+      <span id="nodeCount">0</span> 个节点，<span id="edgeCount">0</span> 条关系
+      <span class="graph-hint">单击节点 = 查看报道　双击节点 = 以它为中心</span>
+    </div>
+  </div>
+
+  <!-- Entity detail side panel -->
+  <div id="entityPanel" class="entity-panel-side" style="display:none">
+    <div class="panel-head">
+      <span id="panelType" class="panel-type"></span>
+      <button class="panel-close" onclick="closePanel()">✕</button>
+    </div>
+    <h3 id="panelName" class="panel-name"></h3>
+    <div class="panel-actions">
+      <a id="panelDetailLink" href="#" class="panel-btn primary">📇 实体档案</a>
+      <button class="panel-btn" onclick="focusCurrent()">🎯 以此为中心</button>
+    </div>
+    <div class="panel-section">
+      <h4>📰 相关报道（<span id="panelArticleCount">0</span>）</h4>
+      <ul id="panelArticles" class="panel-articles"></ul>
+      <a id="panelMoreLink" href="#" class="panel-more">查看全部报道 →</a>
+    </div>
+    <div class="panel-section">
+      <h4>🕸 关联实体</h4>
+      <div id="panelRelated" class="panel-related"></div>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='vis-network.min.js') }}"></script>
+<script>
+let network = null;
+let currentFocus = null;   // entity id currently used as ego center
+let panelEntityId = null;  // entity shown in side panel
+
+const colors = {
+  person: { bg: '#e74c3c', border: '#c0392b', highlight: '#ff6b6b' },
+  org: { bg: '#3498db', border: '#2980b9', highlight: '#5dade2' },
+  event: { bg: '#2ecc71', border: '#27ae60', highlight: '#58d68d' },
+};
+const typeNames = { person: '人物', org: '机构', event: '事件' };
+
+function loadGraph() {
+  const types = Array.from(document.querySelectorAll('.type-filter:checked')).map(cb => cb.value);
+  const search = document.getElementById('entitySearch').value;
+  const limit = document.getElementById('nodeLimit').value;
+
+  const params = new URLSearchParams();
+  if (currentFocus) {
+    params.append('focus', currentFocus);
+  } else {
+    types.forEach(t => params.append('type', t));
+    if (search) params.append('q', search);
+  }
+  params.append('limit', limit);
+
+  fetch(`/api/graph/data?${params}`)
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById('nodeCount').textContent = data.total;
+      document.getElementById('edgeCount').textContent = data.edges.length;
+      renderGraph(data);
+      updateFocusBar(data);
+    })
+    .catch(err => console.error('Failed to load graph:', err));
+}
+
+function updateFocusBar(data) {
+  const bar = document.getElementById('focusBar');
+  if (currentFocus) {
+    const node = data.nodes.find(n => n.id === Number(currentFocus));
+    if (node) {
+      document.getElementById('focusName').textContent = node.label;
+      document.getElementById('focusDetail').href = `/entity/${node.id}`;
+      bar.style.display = 'flex';
+      return;
+    }
+  }
+  bar.style.display = 'none';
+}
+
+function renderGraph(data) {
+  const container = document.getElementById('graphNetwork');
+
+  const nodes = new vis.DataSet(
+    data.nodes.map(n => ({
+      id: n.id,
+      label: n.label,
+      group: n.group,
+      value: Math.max(n.value, 1),
+      borderWidth: n.focus ? 4 : 1,
+      color: {
+        background: colors[n.group].bg,
+        border: n.focus ? '#f39c12' : colors[n.group].border,
+        highlight: { background: colors[n.group].highlight, border: colors[n.group].border },
+      },
+      font: { size: n.focus ? 18 : 14, color: '#333', face: 'sans-serif' },
+    }))
+  );
+
+  const edges = new vis.DataSet(
+    data.edges.map(e => ({
+      from: e.from,
+      to: e.to,
+      value: e.value,
+      width: Math.min(1 + e.value * 0.5, 4),
+      color: { color: '#bbb', highlight: '#34495e', opacity: 0.6 },
+      smooth: { type: 'continuous' },
+    }))
+  );
+
+  const options = {
+    autoResize: true,
+    physics: {
+      stabilization: { enabled: true, iterations: 200, updateInterval: 50 },
+      barnesHut: {
+        gravitationalConstant: -3000,
+        centralGravity: 0.3,
+        springLength: 120,
+        springConstant: 0.04,
+        damping: 0.09,
+      },
+    },
+    interaction: { hover: true, tooltipDelay: 200, zoomView: true, dragView: true },
+    nodes: { shape: 'dot', scaling: { min: 12, max: 30 } },
+    edges: { smooth: { type: 'continuous' } },
+    groups: {
+      person: { shape: 'dot', color: { background: colors.person.bg, border: colors.person.border } },
+      org: { shape: 'box', color: { background: colors.org.bg, border: colors.org.border } },
+      event: { shape: 'diamond', color: { background: colors.event.bg, border: colors.event.border } },
+    },
+  };
+
+  if (network) network.destroy();
+  network = new vis.Network(container, { nodes, edges }, options);
+
+  // Single click: open side panel with articles
+  network.on('click', params => {
+    if (params.nodes.length > 0) {
+      openPanel(params.nodes[0]);
+    }
+  });
+
+  // Double click: refocus the graph on this entity
+  network.on('doubleClick', params => {
+    if (params.nodes.length > 0) {
+      currentFocus = params.nodes[0];
+      loadGraph();
+      openPanel(params.nodes[0]);
+    }
+  });
+}
+
+function openPanel(entityId) {
+  panelEntityId = entityId;
+  fetch(`/api/entity/${entityId}`)
+    .then(res => res.json())
+    .then(data => {
+      document.getElementById('panelType').textContent = typeNames[data.type] || data.type;
+      document.getElementById('panelType').className = `panel-type ${data.type}`;
+      document.getElementById('panelName').textContent = data.name;
+      document.getElementById('panelDetailLink').href = `/entity/${data.id}`;
+      document.getElementById('panelArticleCount').textContent = data.article_count;
+      document.getElementById('panelMoreLink').href = `/entity/${data.id}`;
+      document.getElementById('panelMoreLink').style.display =
+        data.article_count > data.articles.length ? 'inline' : 'none';
+
+      const ul = document.getElementById('panelArticles');
+      ul.innerHTML = '';
+      data.articles.forEach(a => {
+        const li = document.createElement('li');
+        const date = (a.published_at || '').slice(0, 10);
+        li.innerHTML = `<a href="/a/${a.article_id}">${a.title}</a><time>${date}</time>`;
+        ul.appendChild(li);
+      });
+
+      const rel = document.getElementById('panelRelated');
+      rel.innerHTML = '';
+      data.related.forEach(r => {
+        const chip = document.createElement('a');
+        chip.className = `panel-rel-chip ${r.type}`;
+        chip.textContent = `${r.name} ×${r.strength}`;
+        chip.href = 'javascript:void(0)';
+        chip.onclick = () => { currentFocus = r.id; loadGraph(); openPanel(r.id); };
+        rel.appendChild(chip);
+      });
+
+      document.getElementById('entityPanel').style.display = 'block';
+    })
+    .catch(err => console.error('Failed to load entity:', err));
+}
+
+function closePanel() {
+  document.getElementById('entityPanel').style.display = 'none';
+  panelEntityId = null;
+}
+
+function focusCurrent() {
+  if (panelEntityId) {
+    currentFocus = panelEntityId;
+    loadGraph();
+  }
+}
+
+function clearFocus() {
+  currentFocus = null;
+  closePanel();
+  loadGraph();
+}
+
+document.querySelectorAll('.type-filter').forEach(cb => {
+  cb.addEventListener('change', () => { currentFocus = null; loadGraph(); });
+});
+
+let searchTimeout;
+document.getElementById('entitySearch').addEventListener('input', function() {
+  clearTimeout(searchTimeout);
+  currentFocus = null;
+  searchTimeout = setTimeout(loadGraph, 500);
+});
+
+document.getElementById('nodeLimit').addEventListener('change', loadGraph);
+
+// Support /graph?focus=<id> deep links from entity pages
+const urlFocus = new URLSearchParams(location.search).get('focus');
+if (urlFocus) {
+  currentFocus = urlFocus;
+  openPanel(Number(urlFocus));
+}
+loadGraph();
+</script>
+
+<style>
+.graph-container {
+  display: flex;
+  gap: 20px;
+  padding: 20px 0;
+  height: calc(100vh - 160px);
+  min-height: 500px;
+  position: relative;
+}
+
+.graph-sidebar {
+  width: 260px;
+  flex-shrink: 0;
+  background: #fff;
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.04);
+  overflow-y: auto;
+}
+
+.graph-sidebar h2 { margin: 0 0 8px; font-size: 20px; }
+.graph-desc { color: #6b7280; font-size: 13px; margin: 0 0 20px; }
+
+.graph-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: #f3f4f6;
+  border-radius: 8px;
+  padding: 12px 8px;
+  text-align: center;
+  text-decoration: none;
+  transition: background .15s;
+}
+.stat-card:hover { background: #e8eaee; }
+.stat-value { font-size: 22px; font-weight: 700; color: #1a1a1a; }
+.stat-label { font-size: 12px; color: #6b7280; margin-top: 4px; }
+
+.filter-group { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.filter-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.filter-label input { margin: 0; }
+.filter-chip { padding: 4px 12px; border-radius: 999px; font-size: 13px; color: #fff; }
+.filter-chip.person { background: #e74c3c; }
+.filter-chip.org { background: #3498db; }
+.filter-chip.event { background: #2ecc71; }
+
+.search-box { margin-bottom: 12px; }
+.search-box input {
+  width: 100%; padding: 8px 12px; border: 1px solid #e6e8eb;
+  border-radius: 8px; font-size: 14px; outline: none;
+}
+.search-box input:focus { border-color: #c0182b; }
+
+.limit-control { margin-bottom: 12px; font-size: 13px; }
+.limit-control select {
+  margin-left: 8px; padding: 4px 8px;
+  border: 1px solid #e6e8eb; border-radius: 6px;
+}
+
+.btn-primary {
+  width: 100%; padding: 10px; background: #c0182b; color: #fff;
+  border: 0; border-radius: 8px; font-size: 14px; cursor: pointer;
+}
+.btn-primary:hover { background: #a01324; }
+
+.legend { margin-top: 20px; padding-top: 20px; border-top: 1px solid #e6e8eb; }
+.legend h3 { margin: 0 0 12px; font-size: 15px; }
+.legend-item { display: flex; align-items: center; gap: 10px; font-size: 13px; margin-bottom: 8px; }
+.legend-dot { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.legend-dot.person { background: #e74c3c; }
+.legend-dot.org { background: #3498db; }
+.legend-dot.event { background: #2ecc71; }
+.legend-line { width: 24px; height: 2px; background: #95a5a6; display: inline-block; }
+
+.graph-main {
+  flex: 1;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.04);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.focus-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 20px;
+  background: #fff8ec;
+  border-bottom: 1px solid #f5e2bd;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.focus-bar a { color: #c0182b; text-decoration: none; }
+.focus-bar a:hover { text-decoration: underline; }
+.focus-bar button {
+  margin-left: auto; border: 0; background: transparent;
+  color: #9ca3af; cursor: pointer; font-size: 13px;
+}
+.focus-bar button:hover { color: #c0182b; }
+
+.graph-network { flex: 1; height: 100%; background: #fafbfc; overflow: hidden; }
+
+.graph-info {
+  padding: 12px 20px;
+  border-top: 1px solid #e6e8eb;
+  font-size: 13px;
+  color: #6b7280;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+}
+.graph-hint { color: #9ca3af; }
+
+/* Entity side panel */
+.entity-panel-side {
+  position: absolute;
+  top: 30px;
+  right: 10px;
+  width: 320px;
+  max-height: calc(100% - 60px);
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.16);
+  z-index: 20;
+}
+
+.panel-head { display: flex; justify-content: space-between; align-items: center; }
+.panel-type {
+  padding: 2px 12px; border-radius: 999px; font-size: 12px; color: #fff;
+  background: #9ca3af;
+}
+.panel-type.person { background: #e74c3c; }
+.panel-type.org { background: #3498db; }
+.panel-type.event { background: #2ecc71; }
+.panel-close {
+  border: 0; background: transparent; color: #9ca3af;
+  font-size: 15px; cursor: pointer;
+}
+.panel-close:hover { color: #1a1a1a; }
+
+.panel-name { margin: 10px 0 12px; font-size: 20px; }
+
+.panel-actions { display: flex; gap: 8px; margin-bottom: 16px; }
+.panel-btn {
+  flex: 1; text-align: center; padding: 8px 0; border-radius: 8px;
+  font-size: 13px; cursor: pointer; text-decoration: none;
+  border: 1px solid #e6e8eb; background: #fff; color: #374151;
+}
+.panel-btn:hover { background: #f6f7f9; }
+.panel-btn.primary { background: #c0182b; border-color: #c0182b; color: #fff; }
+.panel-btn.primary:hover { background: #a01324; }
+
+.panel-section { margin-bottom: 14px; }
+.panel-section h4 { margin: 0 0 8px; font-size: 14px; }
+
+.panel-articles { list-style: none; margin: 0; padding: 0; }
+.panel-articles li {
+  padding: 7px 0; border-bottom: 1px solid #f3f4f6;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.panel-articles a {
+  color: #1a1a1a; text-decoration: none; font-size: 13px; line-height: 1.5;
+}
+.panel-articles a:hover { color: #c0182b; }
+.panel-articles time { color: #9ca3af; font-size: 11px; }
+
+.panel-more { font-size: 13px; color: #c0182b; text-decoration: none; display: inline-block; margin-top: 8px; }
+.panel-more:hover { text-decoration: underline; }
+
+.panel-related { display: flex; flex-wrap: wrap; gap: 6px; }
+.panel-rel-chip {
+  padding: 3px 10px; border-radius: 999px; font-size: 12px;
+  text-decoration: none; cursor: pointer;
+}
+.panel-rel-chip.person { background: #fde8e8; color: #c0392b; }
+.panel-rel-chip.org { background: #dbeafe; color: #1d4ed8; }
+.panel-rel-chip.event { background: #d1fae5; color: #065f46; }
+.panel-rel-chip:hover { filter: brightness(.93); }
+
+@media (max-width: 900px) {
+  .graph-container { flex-direction: column; height: auto; min-height: 700px; }
+  .graph-sidebar { width: 100%; max-height: 300px; }
+  .graph-main { min-height: 400px; }
+  .entity-panel-side {
+    position: fixed; top: auto; bottom: 0; left: 0; right: 0;
+    width: auto; max-height: 60vh; border-radius: 14px 14px 0 0;
+  }
+}
+</style>
+{% endblock %}

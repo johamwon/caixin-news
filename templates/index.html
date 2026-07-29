@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}
+{% if q %}搜索“{{ q }}”{% elif tag %}{{ tag }}{% else %}金融我闻{% endif %} · 财新阅读
+{% endblock %}
+
+{% block content %}
+<div class="listbar">
+  <h1>
+    {% if q %}搜索：<span>{{ q }}</span>
+    {% elif tag %}{{ tag }}
+    {% else %}最新文章{% endif %}
+  </h1>
+  <p class="count">
+    {% if q or tag %}共 {{ total }} 篇{% else %}馆藏 {{ grand_total }} 篇 · 按发布时间倒序{% endif %}
+  </p>
+</div>
+
+{% if items %}
+<div class="grid">
+  {% for it in items %}
+  <article class="card">
+    <a class="card-link" href="{{ url_for('article', article_id=it.article_id) }}">
+      {% if it.image %}
+      <div class="thumb"><img loading="lazy" src="{{ it.image }}" alt=""></div>
+      {% endif %}
+      <div class="card-body">
+        <time class="date">{{ it.date }}</time>
+        <h2 class="card-title">{{ it.title }}</h2>
+        {% if it.summary %}<p class="summary">{{ it.summary }}</p>{% endif %}
+      </div>
+    </a>
+    {% if it.tags %}
+    <div class="tags">
+      {% for t in it.tags[:3] %}
+      <a class="tag" href="{{ url_for('index', tag=t) }}">{{ t }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+
+{% if pages > 1 %}
+<nav class="pager">
+  {% if page > 1 %}
+  <a href="{{ url_for('index', tag=tag, q=q, page=page-1) }}">上一页</a>
+  {% else %}<span class="disabled">上一页</span>{% endif %}
+  <span class="pageinfo">{{ page }} / {{ pages }}</span>
+  {% if page < pages %}
+  <a href="{{ url_for('index', tag=tag, q=q, page=page+1) }}">下一页</a>
+  {% else %}<span class="disabled">下一页</span>{% endif %}
+</nav>
+{% endif %}
+
+{% else %}
+<div class="empty">没有找到相关文章。</div>
+{% endif %}
+{% endblock %}

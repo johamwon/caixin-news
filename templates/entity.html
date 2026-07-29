@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}{{ ent.name }} · 实体档案 · 金融我闻{% endblock %}
+
+{% set type_names = {'person': '人物', 'org': '机构', 'event': '事件'} %}
+{% set type_icons = {'person': '👤', 'org': '🏢', 'event': '⚡'} %}
+
+{% block content %}
+<div class="entity-page">
+  <div class="entity-main">
+    <a class="back" href="{{ url_for('entities_browse', type=ent.type) }}">← 返回{{ type_names[ent.type] }}列表</a>
+
+    <div class="entity-header {{ ent.type }}">
+      <div class="entity-avatar {{ ent.type }}">{{ type_icons[ent.type] }}</div>
+      <div>
+        <h1 class="entity-name">{{ ent.name }}</h1>
+        <div class="entity-meta">
+          <span class="entity-chip {{ ent.type }}">{{ type_names[ent.type] }}</span>
+          <span class="entity-count">共 {{ articles|length }} 篇相关报道</span>
+          <a class="entity-graph-link" href="{{ url_for('graph', focus=ent.id) }}">🔗 在图谱中查看</a>
+        </div>
+      </div>
+    </div>
+
+    <h2 class="section-title">📰 相关报道时间线</h2>
+    {% if articles %}
+    <div class="timeline">
+      {% for a in articles %}
+      <div class="timeline-item">
+        <div class="timeline-date">{{ (a.published_at or '')[:10] }}</div>
+        <div class="timeline-card">
+          <a class="timeline-title" href="{{ url_for('article', article_id=a.article_id) }}">{{ a.title }}</a>
+          {% if a.summary %}
+          <p class="timeline-summary">{{ a.summary[:100] }}{% if a.summary|length > 100 %}…{% endif %}</p>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-note">暂无相关报道。</p>
+    {% endif %}
+  </div>
+
+  <aside class="entity-side">
+    <div class="side-card">
+      <h3>🕸 关联实体</h3>
+      {% if related %}
+      <ul class="related-entities">
+        {% for r in related %}
+        <li>
+          <a class="rel-entity" href="{{ url_for('entity_detail', entity_id=r.id) }}">
+            <span class="entity-dot {{ r.type }}"></span>
+            <span class="rel-name">{{ r.name }}</span>
+            <span class="rel-strength" title="共现 {{ r.strength }} 次">×{{ r.strength }}</span>
+          </a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="empty-note">暂无关联实体。</p>
+      {% endif %}
+    </div>
+  </aside>
+</div>
+
+<style>
+.entity-page { display: flex; gap: 24px; padding: 24px 0; align-items: flex-start; }
+.entity-main { flex: 1; min-width: 0; }
+.entity-side { width: 300px; flex-shrink: 0; position: sticky; top: 20px; }
+
+.back { color: #6b7280; font-size: 14px; text-decoration: none; }
+.back:hover { color: #c0182b; }
+
+.entity-header {
+  display: flex; align-items: center; gap: 16px;
+  background: #fff; border-radius: 14px; padding: 24px;
+  margin: 14px 0 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.04);
+  border-left: 4px solid #e74c3c;
+}
+.entity-header.org { border-left-color: #3498db; }
+.entity-header.event { border-left-color: #2ecc71; }
+
+.entity-avatar {
+  width: 60px; height: 60px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; flex-shrink: 0;
+}
+.entity-avatar.person { background: #fdecea; }
+.entity-avatar.org { background: #eaf4fd; }
+.entity-avatar.event { background: #eafaf1; }
+
+.entity-name { margin: 0 0 8px; font-size: 26px; }
+.entity-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.entity-chip {
+  padding: 3px 12px; border-radius: 999px; font-size: 13px; color: #fff;
+}
+.entity-chip.person { background: #e74c3c; }
+.entity-chip.org { background: #3498db; }
+.entity-chip.event { background: #2ecc71; }
+.entity-count { color: #6b7280; font-size: 14px; }
+.entity-graph-link { color: #c0182b; font-size: 14px; text-decoration: none; }
+.entity-graph-link:hover { text-decoration: underline; }
+
+.section-title { font-size: 18px; margin: 0 0 16px; }
+
+.timeline { position: relative; padding-left: 4px; }
+.timeline-item { display: flex; gap: 16px; margin-bottom: 14px; }
+.timeline-date {
+  width: 92px; flex-shrink: 0; color: #9ca3af; font-size: 13px;
+  padding-top: 14px; text-align: right; font-variant-numeric: tabular-nums;
+}
+.timeline-card {
+  flex: 1; min-width: 0; background: #fff; border-radius: 12px; padding: 14px 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  border-left: 3px solid #e6e8eb;
+  transition: border-color .15s, transform .15s;
+}
+.timeline-card:hover { border-left-color: #c0182b; transform: translateX(2px); }
+.timeline-title {
+  font-size: 15px; font-weight: 600; color: #1a1a1a; text-decoration: none;
+  display: block;
+}
+.timeline-title:hover { color: #c0182b; }
+.timeline-summary { margin: 6px 0 0; color: #6b7280; font-size: 13px; line-height: 1.6; }
+
+.side-card {
+  background: #fff; border-radius: 14px; padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 6px 20px rgba(0,0,0,.04);
+}
+.side-card h3 { margin: 0 0 14px; font-size: 16px; }
+
+.related-entities { list-style: none; margin: 0; padding: 0; }
+.related-entities li { margin-bottom: 4px; }
+.rel-entity {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 8px; text-decoration: none; color: #1a1a1a;
+}
+.rel-entity:hover { background: #f6f7f9; }
+.entity-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.entity-dot.person { background: #e74c3c; }
+.entity-dot.org { background: #3498db; }
+.entity-dot.event { background: #2ecc71; }
+.rel-name { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rel-strength { color: #9ca3af; font-size: 12px; }
+
+.empty-note { color: #9ca3af; font-size: 14px; }
+
+@media (max-width: 900px) {
+  .entity-page { flex-direction: column; }
+  .entity-side { width: 100%; position: static; }
+  .timeline-date { width: 76px; }
+}
+</style>
+{% endblock %}

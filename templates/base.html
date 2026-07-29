@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}金融我闻 · 财新阅读{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="{{ url_for('index') }}">
+        <span class="brand-mark">财新</span>
+        <span class="brand-name">金融我闻</span>
+      </a>
+      <a class="nav-link" href="{{ url_for('entities_browse') }}">📇 实体库</a>
+      <a class="nav-link" href="{{ url_for('graph') }}">🔗 知识图谱</a>
+      <form class="search" action="{{ url_for('index') }}" method="get">
+        <input type="search" name="q" value="{{ q or '' }}"
+               placeholder="搜索标题或摘要…" autocomplete="off">
+        <button type="submit" aria-label="搜索">搜索</button>
+      </form>
+    </div>
+    <nav class="cats wrap">
+      <a class="chip {{ 'active' if not tag and not q else '' }}"
+         href="{{ url_for('index') }}">全部</a>
+      {% for c in categories %}
+      <a class="chip {{ 'active' if tag == c else '' }}"
+         href="{{ url_for('index', tag=c) }}">{{ c }}
+         {% if cat_counts.get(c) %}<em>{{ cat_counts[c] }}</em>{% endif %}</a>
+      {% endfor %}
+    </nav>
+  </header>
+
+  <main class="wrap">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer wrap">
+    <p>本站仅归档并展示财新「金融我闻」公开元数据与免费预览，正文版权归 <a href="https://www.caixin.com/" target="_blank" rel="noopener">财新网</a> 所有；点击文章可跳转阅读原文。</p>
+  </footer>
+</body>
+</html>

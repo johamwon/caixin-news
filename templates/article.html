@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}{{ a.title }} · 金融我闻{% endblock %}
+
+{% block content %}
+<article class="detail">
+  <a class="back" href="{{ url_for('index') }}">← 返回列表</a>
+  <h1 class="detail-title">{{ a.title }}</h1>
+  <div class="meta">
+    <time>{{ a.published_at[:16].replace('T', ' ') }}</time>
+    {% if a.author %}<span>作者 {{ a.author }}</span>{% endif %}
+    {% if a.editor %}<span>责编 {{ a.editor }}</span>{% endif %}
+  </div>
+
+  {% if a.tags %}
+  <div class="tags detail-tags">
+    {% for t in a.tags %}
+    <a class="tag" href="{{ url_for('index', tag=t) }}">{{ t }}</a>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if a.entities and (a.entities.person or a.entities.org or a.entities.event) %}
+  <div class="entity-panel">
+    <h3 class="entity-title">🔗 关联实体 <small>点击查看实体档案与全部相关报道</small></h3>
+    {% if a.entities.person %}
+    <div class="entity-row">
+      <span class="entity-label person">👤 人物</span>
+      <div class="entity-chips">
+        {% for e in a.entities.person %}
+        <a class="entity-chip person" href="{{ url_for('entity_detail', entity_id=e.id) }}">{{ e.name }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if a.entities.org %}
+    <div class="entity-row">
+      <span class="entity-label org">🏢 机构</span>
+      <div class="entity-chips">
+        {% for e in a.entities.org %}
+        <a class="entity-chip org" href="{{ url_for('entity_detail', entity_id=e.id) }}">{{ e.name }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if a.entities.event %}
+    <div class="entity-row">
+      <span class="entity-label event">⚡ 事件</span>
+      <div class="entity-chips">
+        {% for e in a.entities.event %}
+        <a class="entity-chip event" href="{{ url_for('entity_detail', entity_id=e.id) }}">{{ e.name }}</a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if a.image %}
+  <div class="detail-hero"><img src="{{ a.image }}" alt=""></div>
+  {% endif %}
+
+  {% if a.summary %}<p class="lead">{{ a.summary }}</p>{% endif %}
+
+  {% if a.body_text %}
+  <div class="prose">{{ a.body_text | nl2p | safe }}</div>
+  <p class="preview-note">以上为免费预览片段。</p>
+  {% else %}
+  <p class="preview-note">本地暂未抓取预览内容。</p>
+  {% endif %}
+
+  <a class="readmore" href="{{ a.url }}" target="_blank" rel="noopener">
+    阅读原文（财新网）→
+  </a>
+</article>
+
+{% if related %}
+<aside class="related">
+  <h3>相关文章</h3>
+  <ul>
+    {% for r in related %}
+    <li>
+      <a href="{{ url_for('article', article_id=r['article_id']) }}">{{ r['title'] }}</a>
+      <span class="related-meta">
+        {% if r['via'] %}<span class="related-via" title="共同实体">因 {{ r['via'].split(',')[:3]|join('、') }}</span>{% endif %}
+        <time>{{ r['published_at'][:10] }}</time>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</aside>
+<style>
+.related-meta { display: flex; gap: 10px; align-items: center; flex-shrink: 0; }
+.related-via {
+  font-size: 12px; color: #c0182b; background: #fdf0f1;
+  padding: 2px 10px; border-radius: 999px; white-space: nowrap;
+}
+</style>
+{% endif %}
+{% endblock %}
