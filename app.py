@@ -14,9 +14,12 @@ from __future__ import annotations
 import math
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
+from email.utils import format_datetime
 from pathlib import Path
+from xml.sax.saxutils import escape
 
-from flask import Flask, abort, g, render_template, request
+from flask import Flask, Response, abort, g, render_template, request
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("CAIXIN_DB", BASE_DIR / "caixin.db"))
@@ -135,6 +138,76 @@ def index():
         tag=tag, q=q, categories=CATEGORIES, cat_counts=cat_counts,
         grand_total=grand_total,
     )
+
+
+@app.route("/rss")
+@app.route("/feed.xml")
+def rss():
+    """RSS 2.0 feed of the latest articles; ?tag=银行 narrows to one category."""
+    db = get_db()
+    tag = request.args.get("tag") or None
+
+    joins, where, params = "", ["a.source = ?"], [SOURCE]
+    if tag:
+        joins = ("JOIN article_tags at ON at.article_url = a.url "
+                 "JOIN tags t ON t.id = at.tag_id")
+        where.append("t.name = ?")
+        params.append(tag)
+
+    rows = db.execute(
+        f"""SELECT DISTINCT a.url, a.article_id, a.title, a.published_at,
+                   a.summary
+            FROM articles a {joins} WHERE {" AND ".join(where)}
+            ORDER BY a.published_at DESC LIMIT 50""",
+        params,
+    ).fetchall()
+
+    site = request.url_root.rstrip("/")
+    feed_title = "财新·金融我闻" + (f" · {tag}" if tag else "")
+    now_rfc822 = format_datetime(datetime.now(timezone.utc))
+
+    def rfc822(published_at: str | None) -> str:
+        # published_at is stored as ISO "YYYY-MM-DD[THH:MM:SS...]" local time.
+        raw = (published_at or "")[:19]
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(raw[: len(datetime.now().strftime(fmt))], fmt)
+                return format_datetime(dt.replace(tzinfo=timezone(timedelta(hours=8))))
+            except ValueError:
+                continue
+        return now_rfc822
+
+    items_xml = []
+    for r in rows:
+        link = f"{site}/a/{r['article_id']}"
+        tags = article_tags(db, r["url"])
+        cats = "".join(f"<category>{escape(t)}</category>" for t in tags)
+        items_xml.append(
+            "<item>"
+            f"<title>{escape(r['title'] or '')}</title>"
+            f"<link>{escape(link)}</link>"
+            f"<guid isPermaLink=\"true\">{escape(link)}</guid>"
+            f"<pubDate>{rfc822(r['published_at'])}</pubDate>"
+            f"<description>{escape(r['summary'] or '')}</description>"
+            f"{cats}"
+            "</item>"
+        )
+
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">'
+        "<channel>"
+        f"<title>{escape(feed_title)}</title>"
+        f"<link>{escape(site + '/')}</link>"
+        "<description>财新「金融我闻」最新文章归档，每日自动更新</description>"
+        "<language>zh-cn</language>"
+        f"<lastBuildDate>{now_rfc822}</lastBuildDate>"
+        f'<atom:link href="{escape(request.url)}" rel="self" '
+        'type="application/rss+xml"/>'
+        + "".join(items_xml)
+        + "</channel></rss>"
+    )
+    return Response(xml, mimetype="application/rss+xml")
 
 
 @app.route("/a/<article_id>")

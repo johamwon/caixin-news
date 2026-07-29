@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}金融我闻 · 财新阅读{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="alternate" type="application/rss+xml" title="财新·金融我闻 RSS"
+        href="{{ url_for('rss') }}">
 </head>
 <body>
   <header class="site-header">
@@ -15,6 +17,7 @@
       </a>
       <a class="nav-link" href="{{ url_for('entities_browse') }}">📇 实体库</a>
       <a class="nav-link" href="{{ url_for('graph') }}">🔗 知识图谱</a>
+      <a class="nav-link" href="{{ url_for('rss') }}" title="RSS 订阅">📡 RSS</a>
       <form class="search" action="{{ url_for('index') }}" method="get">
         <input type="search" name="q" value="{{ q or '' }}"
                placeholder="搜索标题或摘要…" autocomplete="off">
