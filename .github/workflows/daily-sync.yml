@@ -25,6 +25,18 @@ jobs:
       - name: Run sync (fetch new articles + update knowledge graph)
         run: python wenews_sync.py sync
 
+      # 同步过程会把库切到 WAL 模式；提交前合并 WAL 并恢复单文件模式，
+      # 避免部署到 Vercel 只读文件系统后因缺少 -wal/-shm 旁支文件而打不开
+      - name: Checkpoint sqlite database
+        run: |
+          python - <<'EOF'
+          import sqlite3
+          c = sqlite3.connect("caixin.db")
+          c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+          c.execute("PRAGMA journal_mode=DELETE")
+          c.close()
+          EOF
+
       - name: Commit updated database
         id: commit
         run: |

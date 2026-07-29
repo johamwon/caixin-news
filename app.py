@@ -36,8 +36,12 @@ app = Flask(__name__)
 def get_db() -> sqlite3.Connection:
     if "db" not in g:
         # Read-only connection: Vercel's serverless filesystem is immutable,
-        # and the web app never writes. Works identically for local runs.
-        conn = sqlite3.connect(f"file:{DB_PATH.as_posix()}?mode=ro", uri=True)
+        # and the web app never writes. ``immutable=1`` additionally tells
+        # SQLite the file cannot change, so it never looks for -wal/-shm
+        # sidecar files (which would fail on a WAL-mode db deployed alone).
+        conn = sqlite3.connect(
+            f"file:{DB_PATH.as_posix()}?mode=ro&immutable=1", uri=True
+        )
         conn.row_factory = sqlite3.Row
         g.db = conn
     return g.db
